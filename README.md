@@ -23,25 +23,22 @@ This project's development is based on [dwl](https://codeberg.org/dwl/dwl/).
      - Ipc support(get/send message from/to compositor by external program)
      - Hycov-like overview
      - Window effects from scenefx (blur, shadow, corner radius, opacity)
+     - Zero flickering - every frame is perfect.
 
-Master-Stack Layout
+https://github.com/user-attachments/assets/bb83004a-0563-4b48-ad89-6461a9b78b1f
 
-https://github.com/user-attachments/assets/a9d4776e-b50b-48fb-94ce-651d8a749b8a
+# Mango's Vision
 
-Scroller Layout
+**Mango's primary goal is stability**: After months of testing and development—and aside from a few lingering GPU compatibility issues—it should now be stable enough. I don't plan on making many breaking changes.
 
-https://github.com/user-attachments/assets/c9bf9415-fad1-4400-bcdc-3ad2d76de85a
+**Mango's preference is practicality**: I tend to add features that genuinely help with daily workflows—things that make our work more convenient.
 
-Layer animation
-
-https://github.com/user-attachments/assets/014c893f-115c-4ae9-8342-f9ae3e9a0df0
-
+**Mango won't cater to every user preference**: For niche feature requests, I'll take a wait-and-see approach. I'll only consider adding them if they get a significant number of upvotes.
 
 # Our discord
 [mangowc](https://discord.gg/CPjbDxesh5)
 
 # Supported layouts
-
 - tile
 - scroller
 - monocle
@@ -51,21 +48,20 @@ https://github.com/user-attachments/assets/014c893f-115c-4ae9-8342-f9ae3e9a0df0
 - vertical_tile
 - vertical_grid
 - vertical_scroller
+- tgmix
 
 # Installation
 
+[![Packaging status](https://repology.org/badge/vertical-allrepos/mangowc.svg)](https://repology.org/project/mangowc/versions)
+
 ## Dependencies
 
-- glibc
 - wayland
 - wayland-protocols
 - libinput
 - libdrm
 - libxkbcommon
 - pixman
-- git
-- meson
-- ninja
 - libdisplay-info
 - libliftoff
 - hwdata
@@ -75,7 +71,7 @@ https://github.com/user-attachments/assets/014c893f-115c-4ae9-8342-f9ae3e9a0df0
 - libxcb
 
 ## Arch Linux
-The package is in the Arch User Repository and is availble for manual download [here](https://aur.archlinux.org/packages/mangowc-git) or through a AUR helper like yay:
+The package is in the Arch User Repository and is available for manual download [here](https://aur.archlinux.org/packages/mangowc-git) or through a AUR helper like yay:
 ```bash
 yay -S mangowc-git
 
@@ -108,6 +104,35 @@ Then, install the package:
 ```bash
 dnf install mangowc
 ```
+
+## Guix System
+The package definition is described in the source repository.
+First, add `mangowc` channel to `channels.scm` file:
+
+```scheme
+;; In $HOME/.config/guix/channels.scm
+(cons (channel
+        (name 'mangowc)
+        (url "https://github.com/DreamMaoMao/mangowc.git")
+        (branch "main"))
+      ... ;; Your other channels
+      %default-channels)
+```
+
+Then, run `guix pull` and after update you can either run
+`guix install mangowc` or add it to your configuration via:
+
+```scheme
+(use-modules (mangowc)) ;; Add mangowc module
+
+;; Add mangowc to packages list
+(packages (cons*
+            mangowc-git
+            ... ;; Other packages you specified
+            %base-packages))
+```
+
+And then rebuild your system.
 
 ## Other
 

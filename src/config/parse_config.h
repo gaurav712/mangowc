@@ -58,6 +58,7 @@ typedef struct {
 	uint32_t tags;
 	int32_t isfloating;
 	int32_t isfullscreen;
+	int32_t isfakefullscreen;
 	float scroller_proportion;
 	const char *animation_type_open;
 	const char *animation_type_close;
@@ -72,6 +73,7 @@ typedef struct {
 	int32_t isunglobal;
 	int32_t isglobal;
 	int32_t isoverlay;
+	int32_t shield_when_capture;
 	int32_t allow_shortcuts_inhibit;
 	int32_t ignore_maximize;
 	int32_t ignore_minimize;
@@ -88,6 +90,7 @@ typedef struct {
 	int32_t isterm;
 	int32_t allow_csd;
 	int32_t force_maximize;
+	int32_t force_tiled_state;
 	int32_t force_tearing;
 	int32_t noswallow;
 	float focused_opacity;
@@ -99,13 +102,14 @@ typedef struct {
 } ConfigWinRule;
 
 typedef struct {
-	const char *name;	   // Monitor name
-	int32_t rr;			   // Rotate and flip (assume integer)
-	float scale;		   // Monitor scale factor
-	int32_t x, y;		   // Monitor position
-	int32_t width, height; // Monitor resolution
-	float refresh;		   // Refresh rate
-	int32_t vrr;		   // variable refresh rate
+	const char *name;			 // Monitor name
+	char *make, *model, *serial; // may be NULL
+	int32_t rr;					 // Rotate and flip (assume integer)
+	float scale;				 // Monitor scale factor
+	int32_t x, y;				 // Monitor position
+	int32_t width, height;		 // Monitor resolution
+	float refresh;				 // Refresh rate
+	int32_t vrr;				 // variable refresh rate
 } ConfigMonitorRule;
 
 // 修改后的宏定义
@@ -155,6 +159,9 @@ typedef struct {
 	int32_t id;
 	char *layout_name;
 	char *monitor_name;
+	char *monitor_make;
+	char *monitor_model;
+	char *monitor_serial;
 	float mfact;
 	int32_t nmaster;
 	int32_t no_render_border;
@@ -202,6 +209,7 @@ typedef struct {
 	int32_t scroller_ignore_proportion_single;
 	int32_t scroller_focus_center;
 	int32_t scroller_prefer_center;
+	int32_t scroller_prefer_overspread;
 	int32_t edge_scroller_pointer_focus;
 	int32_t focus_cross_monitor;
 	int32_t exchange_cross_monitor;
@@ -342,7 +350,7 @@ typedef struct {
 typedef int32_t (*FuncType)(const Arg *);
 Config config;
 
-void parse_config_file(Config *config, const char *file_path);
+bool parse_config_file(Config *config, const char *file_path, bool must_exist);
 
 // Helper function to trim whitespace from start and end of a string
 void trim_whitespace(char *str) {
@@ -990,6 +998,7 @@ FuncType parse_func_name(char *func_name, Arg *arg, char *arg_value,
 		(*arg).v = strdup(arg_value);
 	} else if (strcmp(func_name, "switch_keyboard_layout") == 0) {
 		func = switch_keyboard_layout;
+		(*arg).i = CLAMP_INT(atoi(arg_value), 0, 100);
 	} else if (strcmp(func_name, "setlayout") == 0) {
 		func = setlayout;
 		(*arg).v = strdup(arg_value);
@@ -1311,6 +1320,8 @@ bool parse_option(Config *config, char *key, char *value) {
 		config->scroller_focus_center = atoi(value);
 	} else if (strcmp(key, "scroller_prefer_center") == 0) {
 		config->scroller_prefer_center = atoi(value);
+	} else if (strcmp(key, "scroller_prefer_overspread") == 0) {
+		config->scroller_prefer_overspread = atoi(value);
 	} else if (strcmp(key, "edge_scroller_pointer_focus") == 0) {
 		config->edge_scroller_pointer_focus = atoi(value);
 	} else if (strcmp(key, "focus_cross_monitor") == 0) {
@@ -1707,6 +1718,9 @@ bool parse_option(Config *config, char *key, char *value) {
 
 		// 设置默认值
 		rule->name = NULL;
+		rule->make = NULL;
+		rule->model = NULL;
+		rule->serial = NULL;
 		rule->rr = 0;
 		rule->scale = 1.0f;
 		rule->x = INT32_MAX;
@@ -1730,6 +1744,12 @@ bool parse_option(Config *config, char *key, char *value) {
 
 				if (strcmp(key, "name") == 0) {
 					rule->name = strdup(val);
+				} else if (strcmp(key, "make") == 0) {
+					rule->make = strdup(val);
+				} else if (strcmp(key, "model") == 0) {
+					rule->model = strdup(val);
+				} else if (strcmp(key, "serial") == 0) {
+					rule->serial = strdup(val);
 				} else if (strcmp(key, "rr") == 0) {
 					rule->rr = CLAMP_INT(atoi(val), 0, 7);
 				} else if (strcmp(key, "scale") == 0) {
@@ -1778,6 +1798,9 @@ bool parse_option(Config *config, char *key, char *value) {
 		rule->id = 0;
 		rule->layout_name = NULL;
 		rule->monitor_name = NULL;
+		rule->monitor_make = NULL;
+		rule->monitor_model = NULL;
+		rule->monitor_serial = NULL;
 		rule->nmaster = 0;
 		rule->mfact = 0.0f;
 		rule->no_render_border = 0;
@@ -1801,6 +1824,12 @@ bool parse_option(Config *config, char *key, char *value) {
 					rule->layout_name = strdup(val);
 				} else if (strcmp(key, "monitor_name") == 0) {
 					rule->monitor_name = strdup(val);
+				} else if (strcmp(key, "monitor_make") == 0) {
+					rule->monitor_make = strdup(val);
+				} else if (strcmp(key, "monitor_model") == 0) {
+					rule->monitor_model = strdup(val);
+				} else if (strcmp(key, "monitor_serial") == 0) {
+					rule->monitor_serial = strdup(val);
 				} else if (strcmp(key, "no_render_border") == 0) {
 					rule->no_render_border = CLAMP_INT(atoi(val), 0, 1);
 				} else if (strcmp(key, "no_hide") == 0) {
@@ -1895,6 +1924,7 @@ bool parse_option(Config *config, char *key, char *value) {
 		// int32_t rule value, relay to a client property
 		rule->isfloating = -1;
 		rule->isfullscreen = -1;
+		rule->isfakefullscreen = -1;
 		rule->isnoborder = -1;
 		rule->isnoshadow = -1;
 		rule->isnoanimation = -1;
@@ -1904,6 +1934,7 @@ bool parse_option(Config *config, char *key, char *value) {
 		rule->isunglobal = -1;
 		rule->isglobal = -1;
 		rule->isoverlay = -1;
+		rule->shield_when_capture = -1;
 		rule->allow_shortcuts_inhibit = -1;
 		rule->ignore_maximize = -1;
 		rule->ignore_minimize = -1;
@@ -1911,6 +1942,7 @@ bool parse_option(Config *config, char *key, char *value) {
 		rule->isterm = -1;
 		rule->allow_csd = -1;
 		rule->force_maximize = -1;
+		rule->force_tiled_state = -1;
 		rule->force_tearing = -1;
 		rule->noswallow = -1;
 		rule->nofocus = -1;
@@ -2006,6 +2038,8 @@ bool parse_option(Config *config, char *key, char *value) {
 					rule->focused_opacity = atof(val);
 				} else if (strcmp(key, "isoverlay") == 0) {
 					rule->isoverlay = atoi(val);
+				} else if (strcmp(key, "shield_when_capture") == 0) {
+					rule->shield_when_capture = atoi(val);
 				} else if (strcmp(key, "allow_shortcuts_inhibit") == 0) {
 					rule->allow_shortcuts_inhibit = atoi(val);
 				} else if (strcmp(key, "ignore_maximize") == 0) {
@@ -2020,6 +2054,8 @@ bool parse_option(Config *config, char *key, char *value) {
 					rule->allow_csd = atoi(val);
 				} else if (strcmp(key, "force_maximize") == 0) {
 					rule->force_maximize = atoi(val);
+				} else if (strcmp(key, "force_tiled_state") == 0) {
+					rule->force_tiled_state = atoi(val);
 				} else if (strcmp(key, "force_tearing") == 0) {
 					rule->force_tearing = atoi(val);
 				} else if (strcmp(key, "noswallow") == 0) {
@@ -2028,6 +2064,8 @@ bool parse_option(Config *config, char *key, char *value) {
 					rule->scroller_proportion = atof(val);
 				} else if (strcmp(key, "isfullscreen") == 0) {
 					rule->isfullscreen = atoi(val);
+				} else if (strcmp(key, "isfakefullscreen") == 0) {
+					rule->isfakefullscreen = atoi(val);
 				} else if (strcmp(key, "globalkeybinding") == 0) {
 					char mod_str[256], keysym_str[256];
 					sscanf(val, "%255[^-]-%255[a-zA-Z]", mod_str, keysym_str);
@@ -2276,6 +2314,17 @@ bool parse_option(Config *config, char *key, char *value) {
 		binding->arg.v = NULL;
 		binding->arg.v2 = NULL;
 		binding->arg.v3 = NULL;
+
+		// TODO: remove this in next version
+		if (binding->mod == 0 &&
+			(binding->button == BTN_LEFT || binding->button == BTN_RIGHT)) {
+			fprintf(stderr,
+					"\033[1m\033[31m[ERROR]:\033[33m \033[31m%s\033[33m can't "
+					"bind to \033[31m%s\033[33m mod key\n",
+					button_str, mod_str);
+			return false;
+		}
+
 		binding->func =
 			parse_func_name(func_name, &binding->arg, arg_value, arg_value2,
 							arg_value3, arg_value4, arg_value5);
@@ -2293,6 +2342,7 @@ bool parse_option(Config *config, char *key, char *value) {
 				free(binding->arg.v3);
 				binding->arg.v3 = NULL;
 			}
+
 			if (!binding->func)
 				fprintf(stderr,
 						"\033[1m\033[31m[ERROR]:\033[33m Unknown "
@@ -2527,8 +2577,10 @@ bool parse_option(Config *config, char *key, char *value) {
 			config->gesture_bindings_count++;
 		}
 
+	} else if (strncmp(key, "source-optional", 15) == 0) {
+		parse_config_file(config, value, false);
 	} else if (strncmp(key, "source", 6) == 0) {
-		parse_config_file(config, value);
+		parse_config_file(config, value, true);
 	} else {
 		fprintf(stderr,
 				"\033[1m\033[31m[ERROR]:\033[33m Unknown keyword: "
@@ -2556,7 +2608,7 @@ bool parse_config_line(Config *config, const char *line) {
 	return parse_option(config, key, value);
 }
 
-void parse_config_file(Config *config, const char *file_path) {
+bool parse_config_file(Config *config, const char *file_path, bool must_exist) {
 	FILE *file;
 	char full_path[1024];
 
@@ -2575,7 +2627,7 @@ void parse_config_file(Config *config, const char *file_path) {
 				fprintf(stderr,
 						"\033[1m\033[31m[ERROR]:\033[33m HOME environment "
 						"variable not set.\n");
-				return;
+				return false;
 			}
 			snprintf(full_path, sizeof(full_path), "%s/.config/mango/%s", home,
 					 file_path + 1);
@@ -2590,7 +2642,7 @@ void parse_config_file(Config *config, const char *file_path) {
 		if (!home) {
 			fprintf(stderr, "\033[1m\033[31m[ERROR]:\033[33m HOME environment "
 							"variable not set.\n");
-			return;
+			return false;
 		}
 		snprintf(full_path, sizeof(full_path), "%s%s", home, file_path + 1);
 		file = fopen(full_path, "r");
@@ -2601,23 +2653,29 @@ void parse_config_file(Config *config, const char *file_path) {
 	}
 
 	if (!file) {
-		fprintf(stderr,
-				"\033[1;31m\033[1;33m[ERROR]:\033[0m Failed to open "
-				"config file: %s\n",
-				file_path);
-		return;
+		if (must_exist) {
+			fprintf(stderr,
+					"\033[1;31m\033[1;33m[ERROR]:\033[0m Failed to open "
+					"config file: %s\n",
+					file_path);
+			return false;
+		} else {
+			return true;
+		}
 	}
 
 	char line[512];
 	bool parse_correct = true;
+	bool parse_line_correct = true;
 	uint32_t line_count = 0;
 	while (fgets(line, sizeof(line), file)) {
 		line_count++;
 		if (line[0] == '#' || line[0] == '\n') {
 			continue;
 		}
-		parse_correct = parse_config_line(config, line);
-		if (!parse_correct) {
+		parse_line_correct = parse_config_line(config, line);
+		if (!parse_line_correct) {
+			parse_correct = false;
 			fprintf(stderr,
 					"\033[1;31m╰─\033[1;33m[Index]\033[0m "
 					"\033[1;36m%s\033[0m:\033[1;35m%d\033[0m\n"
@@ -2627,6 +2685,7 @@ void parse_config_file(Config *config, const char *file_path) {
 	}
 
 	fclose(file);
+	return parse_correct;
 }
 
 void free_circle_layout(Config *config) {
@@ -2821,6 +2880,12 @@ void free_config(void) {
 				free((void *)config.tag_rules[i].layout_name);
 			if (config.tag_rules[i].monitor_name)
 				free((void *)config.tag_rules[i].monitor_name);
+			if (config.tag_rules[i].monitor_make)
+				free((void *)config.tag_rules[i].monitor_make);
+			if (config.tag_rules[i].monitor_model)
+				free((void *)config.tag_rules[i].monitor_model);
+			if (config.tag_rules[i].monitor_serial)
+				free((void *)config.tag_rules[i].monitor_serial);
 		}
 		free(config.tag_rules);
 		config.tag_rules = NULL;
@@ -2832,6 +2897,12 @@ void free_config(void) {
 		for (int32_t i = 0; i < config.monitor_rules_count; i++) {
 			if (config.monitor_rules[i].name)
 				free((void *)config.monitor_rules[i].name);
+			if (config.monitor_rules[i].make)
+				free((void *)config.monitor_rules[i].make);
+			if (config.monitor_rules[i].model)
+				free((void *)config.monitor_rules[i].model);
+			if (config.monitor_rules[i].serial)
+				free((void *)config.monitor_rules[i].serial);
 		}
 		free(config.monitor_rules);
 		config.monitor_rules = NULL;
@@ -2956,6 +3027,8 @@ void override_config(void) {
 		CLAMP_INT(config.scroller_ignore_proportion_single, 0, 1);
 	scroller_focus_center = CLAMP_INT(config.scroller_focus_center, 0, 1);
 	scroller_prefer_center = CLAMP_INT(config.scroller_prefer_center, 0, 1);
+	scroller_prefer_overspread =
+		CLAMP_INT(config.scroller_prefer_overspread, 0, 1);
 	edge_scroller_pointer_focus =
 		CLAMP_INT(config.edge_scroller_pointer_focus, 0, 1);
 	scroller_structs = CLAMP_INT(config.scroller_structs, 0, 1000);
@@ -3136,6 +3209,7 @@ void set_value_default() {
 		scroller_ignore_proportion_single;
 	config.scroller_focus_center = scroller_focus_center;
 	config.scroller_prefer_center = scroller_prefer_center;
+	config.scroller_prefer_overspread = scroller_prefer_overspread;
 	config.edge_scroller_pointer_focus = edge_scroller_pointer_focus;
 	config.focus_cross_monitor = focus_cross_monitor;
 	config.exchange_cross_monitor = exchange_cross_monitor;
@@ -3248,7 +3322,7 @@ void set_default_key_bindings(Config *config) {
 	config->key_bindings_count += default_key_bindings_count;
 }
 
-void parse_config(void) {
+bool parse_config(void) {
 
 	char filename[1024];
 
@@ -3301,7 +3375,7 @@ void parse_config(void) {
 		const char *homedir = getenv("HOME");
 		if (!homedir) {
 			// 如果获取失败，则无法继续
-			return;
+			return false;
 		}
 		// 构建日志文件路径
 		snprintf(filename, sizeof(filename), "%s/.config/mango/config.conf",
@@ -3315,10 +3389,12 @@ void parse_config(void) {
 		}
 	}
 
+	bool parse_correct = true;
 	set_value_default();
-	parse_config_file(&config, filename);
+	parse_correct = parse_config_file(&config, filename, true);
 	set_default_key_bindings(&config);
 	override_config();
+	return parse_correct;
 }
 
 void reapply_monitor_rules(void) {
@@ -3329,6 +3405,7 @@ void reapply_monitor_rules(void) {
 	struct wlr_output_state state;
 	struct wlr_output_mode *internal_mode = NULL;
 	wlr_output_state_init(&state);
+	bool match_rule = false;
 
 	wl_list_for_each(m, &mons, link) {
 		if (!m->wlr_output->enabled) {
@@ -3340,8 +3417,40 @@ void reapply_monitor_rules(void) {
 				break;
 
 			mr = &config.monitor_rules[ji];
-			if (regex_match(mr->name, m->wlr_output->name)) {
 
+			// 检查是否匹配的变量
+			match_rule = true;
+
+			// 检查四个标识字段的匹配
+			if (mr->name != NULL) {
+				if (!regex_match(mr->name, m->wlr_output->name)) {
+					match_rule = false;
+				}
+			}
+
+			if (mr->make != NULL) {
+				if (m->wlr_output->make == NULL ||
+					strcmp(mr->make, m->wlr_output->make) != 0) {
+					match_rule = false;
+				}
+			}
+
+			if (mr->model != NULL) {
+				if (m->wlr_output->model == NULL ||
+					strcmp(mr->model, m->wlr_output->model) != 0) {
+					match_rule = false;
+				}
+			}
+
+			if (mr->serial != NULL) {
+				if (m->wlr_output->serial == NULL ||
+					strcmp(mr->serial, m->wlr_output->serial) != 0) {
+					match_rule = false;
+				}
+			}
+
+			// 只有当所有指定的标识都匹配时才应用规则
+			if (match_rule) {
 				mx = mr->x == INT32_MAX ? m->m.x : mr->x;
 				my = mr->y == INT32_MAX ? m->m.y : mr->y;
 				vrr = mr->vrr >= 0 ? mr->vrr : 0;
@@ -3410,6 +3519,8 @@ void reapply_cursor_style(void) {
 	}
 }
 
+void reapply_rootbg(void) { wlr_scene_rect_set_color(root_bg, rootcolor); }
+
 void reapply_border(void) {
 	Client *c = NULL;
 
@@ -3473,6 +3584,7 @@ void parse_tagrule(Monitor *m) {
 	int32_t i, jk;
 	ConfigTagRule tr;
 	Client *c = NULL;
+	bool match_rule = false;
 
 	for (i = 0; i <= LENGTH(tags); i++) {
 		m->pertag->nmasters[i] = default_nmaster;
@@ -3483,9 +3595,36 @@ void parse_tagrule(Monitor *m) {
 
 		tr = config.tag_rules[i];
 
-		if (config.tag_rules_count > 0 &&
-			(!tr.monitor_name ||
-			 regex_match(tr.monitor_name, m->wlr_output->name))) {
+		match_rule = true;
+
+		if (tr.monitor_name != NULL) {
+			if (!regex_match(tr.monitor_name, m->wlr_output->name)) {
+				match_rule = false;
+			}
+		}
+
+		if (tr.monitor_make != NULL) {
+			if (m->wlr_output->make == NULL ||
+				strcmp(tr.monitor_make, m->wlr_output->make) != 0) {
+				match_rule = false;
+			}
+		}
+
+		if (tr.monitor_model != NULL) {
+			if (m->wlr_output->model == NULL ||
+				strcmp(tr.monitor_model, m->wlr_output->model) != 0) {
+				match_rule = false;
+			}
+		}
+
+		if (tr.monitor_serial != NULL) {
+			if (m->wlr_output->serial == NULL ||
+				strcmp(tr.monitor_serial, m->wlr_output->serial) != 0) {
+				match_rule = false;
+			}
+		}
+
+		if (config.tag_rules_count > 0 && match_rule) {
 
 			for (jk = 0; jk < LENGTH(layouts); jk++) {
 				if (tr.layout_name &&
@@ -3534,6 +3673,7 @@ void reset_option(void) {
 
 	reapply_cursor_style();
 	reapply_border();
+	reapply_rootbg();
 	reapply_keyboard();
 	reapply_pointer();
 	reapply_master();
