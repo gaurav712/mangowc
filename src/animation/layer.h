@@ -212,7 +212,7 @@ void fadeout_layer_animation_next_tick(LayerSurface *l) {
 	buffer_data.height = height;
 
 	if ((!l->animation_type_close &&
-		 strcmp(layer_animation_type_close, "zoom") == 0) ||
+		 strcmp(config.layer_animation_type_close, "zoom") == 0) ||
 		(l->animation_type_close &&
 		 strcmp(l->animation_type_close, "zoom") == 0)) {
 		wlr_scene_node_for_each_buffer(&l->scene->node,
@@ -230,12 +230,12 @@ void fadeout_layer_animation_next_tick(LayerSurface *l) {
 	double opacity_eased_progress =
 		find_animation_curve_at(animation_passed, OPAFADEOUT);
 
-	double percent = fadeout_begin_opacity -
-					 (opacity_eased_progress * fadeout_begin_opacity);
+	double percent = config.fadeout_begin_opacity -
+					 (opacity_eased_progress * config.fadeout_begin_opacity);
 
 	double opacity = MAX(percent, 0.0f);
 
-	if (animation_fade_out)
+	if (config.animation_fade_out)
 		wlr_scene_node_for_each_buffer(&l->scene->node,
 									   scene_buffer_apply_opacity, &opacity);
 
@@ -278,11 +278,11 @@ void layer_animation_next_tick(LayerSurface *l) {
 		find_animation_curve_at(animation_passed, OPAFADEIN);
 
 	double opacity =
-		MIN(fadein_begin_opacity +
-				opacity_eased_progress * (1.0 - fadein_begin_opacity),
+		MIN(config.fadein_begin_opacity +
+				opacity_eased_progress * (1.0 - config.fadein_begin_opacity),
 			1.0f);
 
-	if (animation_fade_in)
+	if (config.animation_fade_in)
 		wlr_scene_node_for_each_buffer(&l->scene->node,
 									   scene_buffer_apply_opacity, &opacity);
 
@@ -298,7 +298,7 @@ void layer_animation_next_tick(LayerSurface *l) {
 	}
 
 	if ((!l->animation_type_open &&
-		 strcmp(layer_animation_type_open, "zoom") == 0) ||
+		 strcmp(config.layer_animation_type_open, "zoom") == 0) ||
 		(l->animation_type_open &&
 		 strcmp(l->animation_type_open, "zoom") == 0)) {
 		wlr_scene_node_for_each_buffer(
@@ -321,7 +321,7 @@ void layer_animation_next_tick(LayerSurface *l) {
 
 void init_fadeout_layers(LayerSurface *l) {
 
-	if (!animations || !layer_animations || l->noanim) {
+	if (!config.animations || !config.layer_animations || l->noanim) {
 		return;
 	}
 
@@ -331,7 +331,7 @@ void init_fadeout_layers(LayerSurface *l) {
 	if ((l->animation_type_close &&
 		 strcmp(l->animation_type_close, "none") == 0) ||
 		(!l->animation_type_close &&
-		 strcmp(layer_animation_type_close, "none") == 0)) {
+		 strcmp(config.layer_animation_type_close, "none") == 0)) {
 		return;
 	}
 
@@ -354,7 +354,7 @@ void init_fadeout_layers(LayerSurface *l) {
 		return;
 	}
 
-	fadeout_layer->animation.duration = animation_duration_close;
+	fadeout_layer->animation.duration = config.animation_duration_close;
 	fadeout_layer->geom = fadeout_layer->current =
 		fadeout_layer->animainit_geom = fadeout_layer->animation.initial =
 			l->animation.current;
@@ -370,14 +370,14 @@ void init_fadeout_layers(LayerSurface *l) {
 	fadeout_layer->animation.initial.y = 0;
 
 	if ((!l->animation_type_close &&
-		 strcmp(layer_animation_type_close, "zoom") == 0) ||
+		 strcmp(config.layer_animation_type_close, "zoom") == 0) ||
 		(l->animation_type_close &&
 		 strcmp(l->animation_type_close, "zoom") == 0)) {
 		// 算出要设置的绝对坐标和大小
 		fadeout_layer->current.width =
-			(float)l->animation.current.width * zoom_end_ratio;
+			(float)l->animation.current.width * config.zoom_end_ratio;
 		fadeout_layer->current.height =
-			(float)l->animation.current.height * zoom_end_ratio;
+			(float)l->animation.current.height * config.zoom_end_ratio;
 		fadeout_layer->current.x = usable_area.x + usable_area.width / 2 -
 								   fadeout_layer->current.width / 2;
 		fadeout_layer->current.y = usable_area.y + usable_area.height / 2 -
@@ -389,7 +389,7 @@ void init_fadeout_layers(LayerSurface *l) {
 			fadeout_layer->current.y - l->animation.current.y;
 
 	} else if ((!l->animation_type_close &&
-				strcmp(layer_animation_type_close, "slide") == 0) ||
+				strcmp(config.layer_animation_type_close, "slide") == 0) ||
 			   (l->animation_type_close &&
 				strcmp(l->animation_type_close, "slide") == 0)) {
 		// 获取slide动画的结束绝对坐标和大小
@@ -434,17 +434,18 @@ void layer_set_pending_state(LayerSurface *l) {
 	if (l->animation.action == OPEN && !l->animation.running) {
 
 		if ((!l->animation_type_open &&
-			 strcmp(layer_animation_type_open, "zoom") == 0) ||
+			 strcmp(config.layer_animation_type_open, "zoom") == 0) ||
 			(l->animation_type_open &&
 			 strcmp(l->animation_type_open, "zoom") == 0)) {
-			l->animainit_geom.width = l->geom.width * zoom_initial_ratio;
-			l->animainit_geom.height = l->geom.height * zoom_initial_ratio;
+			l->animainit_geom.width = l->geom.width * config.zoom_initial_ratio;
+			l->animainit_geom.height =
+				l->geom.height * config.zoom_initial_ratio;
 			l->animainit_geom.x = usable_area.x + usable_area.width / 2 -
 								  l->animainit_geom.width / 2;
 			l->animainit_geom.y = usable_area.y + usable_area.height / 2 -
 								  l->animainit_geom.height / 2;
 		} else if ((!l->animation_type_open &&
-					strcmp(layer_animation_type_open, "slide") == 0) ||
+					strcmp(config.layer_animation_type_open, "slide") == 0) ||
 				   (l->animation_type_open &&
 					strcmp(l->animation_type_open, "slide") == 0)) {
 
@@ -458,8 +459,7 @@ void layer_set_pending_state(LayerSurface *l) {
 	} else {
 		l->animainit_geom = l->animation.current;
 	}
-	// 判断是否需要动画
-	if (!animations || !layer_animations || l->noanim ||
+	if (!config.animations || !config.layer_animations || l->noanim ||
 		l->layer_surface->current.layer ==
 			ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND ||
 		l->layer_surface->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM) {
@@ -471,7 +471,7 @@ void layer_set_pending_state(LayerSurface *l) {
 	if (((l->animation_type_open &&
 		  strcmp(l->animation_type_open, "none") == 0) ||
 		 (!l->animation_type_open &&
-		  strcmp(layer_animation_type_open, "none") == 0)) &&
+		  strcmp(config.layer_animation_type_open, "none") == 0)) &&
 		l->animation.action == OPEN) {
 		l->animation.should_animate = false;
 	}
@@ -518,7 +518,8 @@ bool layer_draw_frame(LayerSurface *l) {
 		return false;
 	}
 
-	if (animations && layer_animations && l->animation.running && !l->noanim) {
+	if (config.animations && config.layer_animations && l->animation.running &&
+		!l->noanim) {
 		layer_animation_next_tick(l);
 	} else {
 		l->need_output_flush = false;
