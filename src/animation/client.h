@@ -40,15 +40,16 @@ int32_t is_special_animation_rule(Client *c) {
 	} else if (c->mon->visible_tiling_clients == 1 && !c->isfloating) {
 		return DOWN;
 	} else if (c->mon->visible_tiling_clients == 2 && !c->isfloating &&
-			   !new_is_master && is_horizontal_stack_layout(c->mon)) {
+			   !config.new_is_master && is_horizontal_stack_layout(c->mon)) {
 		return RIGHT;
-	} else if (!c->isfloating && new_is_master &&
+	} else if (!c->isfloating && config.new_is_master &&
 			   is_horizontal_stack_layout(c->mon)) {
 		return LEFT;
 	} else if (c->mon->visible_tiling_clients == 2 && !c->isfloating &&
-			   !new_is_master && is_horizontal_right_stack_layout(c->mon)) {
+			   !config.new_is_master &&
+			   is_horizontal_right_stack_layout(c->mon)) {
 		return LEFT;
-	} else if (!c->isfloating && new_is_master &&
+	} else if (!c->isfloating && config.new_is_master &&
 			   is_horizontal_right_stack_layout(c->mon)) {
 		return RIGHT;
 	} else {
@@ -63,7 +64,8 @@ void set_client_open_animation(Client *c, struct wlr_box geo) {
 	int32_t special_direction;
 	int32_t center_x, center_y;
 
-	if ((!c->animation_type_open && strcmp(animation_type_open, "fade") == 0) ||
+	if ((!c->animation_type_open &&
+		 strcmp(config.animation_type_open, "fade") == 0) ||
 		(c->animation_type_open &&
 		 strcmp(c->animation_type_open, "fade") == 0)) {
 		c->animainit_geom.width = geo.width;
@@ -72,11 +74,11 @@ void set_client_open_animation(Client *c, struct wlr_box geo) {
 		c->animainit_geom.y = geo.y;
 		return;
 	} else if ((!c->animation_type_open &&
-				strcmp(animation_type_open, "zoom") == 0) ||
+				strcmp(config.animation_type_open, "zoom") == 0) ||
 			   (c->animation_type_open &&
 				strcmp(c->animation_type_open, "zoom") == 0)) {
-		c->animainit_geom.width = geo.width * zoom_initial_ratio;
-		c->animainit_geom.height = geo.height * zoom_initial_ratio;
+		c->animainit_geom.width = geo.width * config.zoom_initial_ratio;
+		c->animainit_geom.height = geo.height * config.zoom_initial_ratio;
 		c->animainit_geom.x = geo.x + (geo.width - c->animainit_geom.width) / 2;
 		c->animainit_geom.y =
 			geo.y + (geo.height - c->animainit_geom.height) / 2;
@@ -246,15 +248,15 @@ void apply_shield(Client *c, struct wlr_box clip_box) {
 void apply_border(Client *c) {
 	bool hit_no_border = false;
 
-	if (c->iskilling || !client_surface(c)->mapped || c->isnoshadow)
+	if (c->iskilling || !client_surface(c)->mapped)
 		return;
 
 	hit_no_border = check_hit_no_border(c);
 
-	if (hit_no_border && smartgaps) {
+	if (hit_no_border && config.smartgaps) {
 		c->bw = 0;
 		c->fake_no_border = true;
-	} else if (hit_no_border && !smartgaps) {
+	} else if (hit_no_border && !config.smartgaps) {
 		set_rect_size(c->border[0], 0, 0);
 		set_rect_size(c->border[1], 0, 0);
 		set_rect_size(c->border[2], 0, 0);
@@ -263,7 +265,7 @@ void apply_border(Client *c) {
 		c->fake_no_border = true;
 		return;
 	} else if (!c->isfullscreen && VISIBLEON(c, c->mon)) {
-		c->bw = c->isnoborder ? 0 : borderpx;
+		c->bw = c->isnoborder ? 0 : config.borderpx;
 		c->fake_no_border = false;
 	}
 
@@ -412,7 +414,7 @@ void client_apply_clip(Client *c, float factor) {
 	struct ivec2 offset;
 	BufferData buffer_data;
 
-	if (!animations) {
+	if (!config.animations) {
 		c->animation.running = false;
 		c->need_output_flush = false;
 		c->animainit_geom = c->current = c->pending = c->animation.current =
@@ -546,19 +548,19 @@ void fadeout_client_animation_next_tick(Client *c) {
 	double opacity_eased_progress =
 		find_animation_curve_at(animation_passed, OPAFADEOUT);
 
-	double percent = fadeout_begin_opacity -
-					 (opacity_eased_progress * fadeout_begin_opacity);
+	double percent = config.fadeout_begin_opacity -
+					 (opacity_eased_progress * config.fadeout_begin_opacity);
 
 	double opacity = MAX(percent, 0);
 
-	if (animation_fade_out && !c->nofadeout)
+	if (config.animation_fade_out && !c->nofadeout)
 		wlr_scene_node_for_each_buffer(&c->scene->node,
 									   scene_buffer_apply_opacity, &opacity);
 
 	if ((c->animation_type_close &&
 		 strcmp(c->animation_type_close, "zoom") == 0) ||
 		(!c->animation_type_close &&
-		 strcmp(animation_type_close, "zoom") == 0)) {
+		 strcmp(config.animation_type_close, "zoom") == 0)) {
 
 		buffer_data.width = width;
 		buffer_data.height = height;
@@ -663,14 +665,14 @@ void init_fadeout_client(Client *c) {
 	if ((c->animation_type_close &&
 		 strcmp(c->animation_type_close, "none") == 0) ||
 		(!c->animation_type_close &&
-		 strcmp(animation_type_close, "none") == 0)) {
+		 strcmp(config.animation_type_close, "none") == 0)) {
 		return;
 	}
 
 	Client *fadeout_client = ecalloc(1, sizeof(*fadeout_client));
 
 	wlr_scene_node_set_enabled(&c->scene->node, true);
-	client_set_border_color(c, bordercolor);
+	client_set_border_color(c, config.bordercolor);
 	fadeout_client->scene =
 		wlr_scene_tree_snapshot(&c->scene->node, layers[LyrFadeOut]);
 	wlr_scene_node_set_enabled(&c->scene->node, false);
@@ -680,7 +682,7 @@ void init_fadeout_client(Client *c) {
 		return;
 	}
 
-	fadeout_client->animation.duration = animation_duration_close;
+	fadeout_client->animation.duration = config.animation_duration_close;
 	fadeout_client->geom = fadeout_client->current =
 		fadeout_client->animainit_geom = fadeout_client->animation.initial =
 			c->animation.current;
@@ -697,7 +699,7 @@ void init_fadeout_client(Client *c) {
 	fadeout_client->animation.initial.y = 0;
 
 	if ((!c->animation_type_close &&
-		 strcmp(animation_type_close, "fade") == 0) ||
+		 strcmp(config.animation_type_close, "fade") == 0) ||
 		(c->animation_type_close &&
 		 strcmp(c->animation_type_close, "fade") == 0)) {
 		fadeout_client->current.x = 0;
@@ -707,7 +709,7 @@ void init_fadeout_client(Client *c) {
 	} else if ((c->animation_type_close &&
 				strcmp(c->animation_type_close, "slide") == 0) ||
 			   (!c->animation_type_close &&
-				strcmp(animation_type_close, "slide") == 0)) {
+				strcmp(config.animation_type_close, "slide") == 0)) {
 		fadeout_client->current.y =
 			c->geom.y + c->geom.height / 2 > c->mon->m.y + c->mon->m.height / 2
 				? c->mon->m.height -
@@ -717,16 +719,16 @@ void init_fadeout_client(Client *c) {
 	} else {
 		fadeout_client->current.y =
 			(fadeout_client->geom.height -
-			 fadeout_client->geom.height * zoom_end_ratio) /
+			 fadeout_client->geom.height * config.zoom_end_ratio) /
 			2;
 		fadeout_client->current.x =
 			(fadeout_client->geom.width -
-			 fadeout_client->geom.width * zoom_end_ratio) /
+			 fadeout_client->geom.width * config.zoom_end_ratio) /
 			2;
 		fadeout_client->current.width =
-			fadeout_client->geom.width * zoom_end_ratio;
+			fadeout_client->geom.width * config.zoom_end_ratio;
 		fadeout_client->current.height =
-			fadeout_client->geom.height * zoom_end_ratio;
+			fadeout_client->geom.height * config.zoom_end_ratio;
 	}
 
 	fadeout_client->animation.time_started = get_now_in_ms();
@@ -761,12 +763,11 @@ void client_set_pending_state(Client *c) {
 	if (!c || c->iskilling)
 		return;
 
-	// 判断是否需要动画
-	if (!animations) {
+	if (!config.animations) {
 		c->animation.should_animate = false;
-	} else if (animations && c->animation.tagining) {
+	} else if (config.animations && c->animation.tagining) {
 		c->animation.should_animate = true;
-	} else if (!animations || c == grabc ||
+	} else if (!config.animations || c == grabc ||
 			   (!c->is_pending_open_animation &&
 				wlr_box_equal(&c->current, &c->pending))) {
 		c->animation.should_animate = false;
@@ -777,7 +778,7 @@ void client_set_pending_state(Client *c) {
 	if (((c->animation_type_open &&
 		  strcmp(c->animation_type_open, "none") == 0) ||
 		 (!c->animation_type_open &&
-		  strcmp(animation_type_open, "none") == 0)) &&
+		  strcmp(config.animation_type_open, "none") == 0)) &&
 		c->animation.action == OPEN) {
 		c->animation.duration = 0;
 	}
@@ -846,16 +847,16 @@ void resize(Client *c, struct wlr_box geo, int32_t interact) {
 		!c->animation.tagouting && wlr_box_equal(&c->geom, &c->current)) {
 		c->animation.action = c->animation.action;
 	} else if (c->animation.tagouting) {
-		c->animation.duration = animation_duration_tag;
+		c->animation.duration = config.animation_duration_tag;
 		c->animation.action = TAG;
 	} else if (c->animation.tagining) {
-		c->animation.duration = animation_duration_tag;
+		c->animation.duration = config.animation_duration_tag;
 		c->animation.action = TAG;
 	} else if (c->is_pending_open_animation) {
-		c->animation.duration = animation_duration_open;
+		c->animation.duration = config.animation_duration_open;
 		c->animation.action = OPEN;
 	} else {
-		c->animation.duration = animation_duration_move;
+		c->animation.duration = config.animation_duration_move;
 		c->animation.action = MOVE;
 	}
 
@@ -876,7 +877,7 @@ void resize(Client *c, struct wlr_box geo, int32_t interact) {
 	}
 
 	bool hit_no_border = check_hit_no_border(c);
-	if (hit_no_border && smartgaps) {
+	if (hit_no_border && config.smartgaps) {
 		c->bw = 0;
 		c->fake_no_border = true;
 	}
@@ -943,12 +944,12 @@ bool client_draw_fadeout_frame(Client *c) {
 void client_set_focused_opacity_animation(Client *c) {
 	float *border_color = get_border_color(c);
 
-	if (!animations) {
+	if (!config.animations) {
 		setborder_color(c);
 		return;
 	}
 
-	c->opacity_animation.duration = animation_duration_focus;
+	c->opacity_animation.duration = config.animation_duration_focus;
 	memcpy(c->opacity_animation.target_border_color, border_color,
 		   sizeof(c->opacity_animation.target_border_color));
 	c->opacity_animation.target_opacity = c->focused_opacity;
@@ -962,15 +963,14 @@ void client_set_focused_opacity_animation(Client *c) {
 }
 
 void client_set_unfocused_opacity_animation(Client *c) {
-	// Start border color animation to unfocused
 	float *border_color = get_border_color(c);
 
-	if (!animations) {
+	if (!config.animations) {
 		setborder_color(c);
 		return;
 	}
 
-	c->opacity_animation.duration = animation_duration_focus;
+	c->opacity_animation.duration = config.animation_duration_focus;
 	memcpy(c->opacity_animation.target_border_color, border_color,
 		   sizeof(c->opacity_animation.target_border_color));
 	// Start opacity animation to unfocused
@@ -1005,13 +1005,14 @@ bool client_apply_focus_opacity(Client *c) {
 		double opacity_eased_progress =
 			find_animation_curve_at(linear_progress, OPAFADEIN);
 
-		float percent =
-			animation_fade_in && !c->nofadein ? opacity_eased_progress : 1.0;
+		float percent = config.animation_fade_in && !c->nofadein
+							? opacity_eased_progress
+							: 1.0;
 		float opacity =
 			c == selmon->sel ? c->focused_opacity : c->unfocused_opacity;
 
-		float target_opacity =
-			percent * (1.0 - fadein_begin_opacity) + fadein_begin_opacity;
+		float target_opacity = percent * (1.0 - config.fadein_begin_opacity) +
+							   config.fadein_begin_opacity;
 		if (target_opacity > opacity) {
 			target_opacity = opacity;
 		}
@@ -1021,7 +1022,7 @@ bool client_apply_focus_opacity(Client *c) {
 		c->opacity_animation.current_opacity = target_opacity;
 		client_set_opacity(c, target_opacity);
 		client_set_border_color(c, c->opacity_animation.target_border_color);
-	} else if (animations && c->opacity_animation.running) {
+	} else if (config.animations && c->opacity_animation.running) {
 
 		struct timespec now;
 		clock_gettime(CLOCK_MONOTONIC, &now);
@@ -1082,7 +1083,7 @@ bool client_draw_frame(Client *c) {
 		return client_apply_focus_opacity(c);
 	}
 
-	if (animations && c->animation.running) {
+	if (config.animations && c->animation.running) {
 		client_animation_next_tick(c);
 	} else {
 		wlr_scene_node_set_position(&c->scene->node, c->pending.x,
