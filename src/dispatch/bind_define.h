@@ -377,7 +377,11 @@ int32_t moveresize(const Arg *arg) {
 	/* Float the window and tell motionnotify to grab it */
 	if (grabc->isfloating == 0 && arg->ui == CurMove) {
 		grabc->drag_to_tile = true;
+		exit_scroller_stack(grabc);
 		setfloating(grabc, 1);
+		grabc->old_stack_inner_per = 0.0f;
+		grabc->old_master_inner_per = 0.0f;
+		set_size_per(grabc->mon, grabc);
 	}
 
 	switch (cursor_mode = arg->ui) {
