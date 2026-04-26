@@ -4439,7 +4439,7 @@ void outputmgrapply(struct wl_listener *listener, void *data) {
 static void
 handle_new_foreign_toplevel_capture_request(struct wl_listener *listener,
 											void *data) {
-	struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1_request
+	struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1_request_event
 		*request = data;
 	Client *c = request->toplevel_handle->data;
 
@@ -5639,7 +5639,7 @@ void setup(void) {
 	new_foreign_toplevel_capture_request.notify =
 		handle_new_foreign_toplevel_capture_request;
 	wl_signal_add(&ext_foreign_toplevel_image_capture_source_manager_v1->events
-					   .new_request,
+					   .capture_request,
 				  &new_foreign_toplevel_capture_request);
 
 	tearing_control = wlr_tearing_control_manager_v1_create(dpy, 1);
