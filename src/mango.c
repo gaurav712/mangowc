@@ -4103,9 +4103,12 @@ mapnotify(struct wl_listener *listener, void *data) {
 	c->ext_foreign_toplevel = wlr_ext_foreign_toplevel_handle_v1_create(
 		foreign_toplevel_list, &foreign_toplevel_state);
 	c->ext_foreign_toplevel->data = c;
-	c->image_capture_tree = c->type == XDGShell
-		? wlr_scene_xdg_surface_create(&c->image_capture_scene->tree, c->surface.xdg)
-		: wlr_scene_subsurface_tree_create(&c->image_capture_scene->tree, client_surface(c));
+	c->image_capture_tree =
+		c->type == XDGShell
+			? wlr_scene_xdg_surface_create(&c->image_capture_scene->tree,
+										   c->surface.xdg)
+			: wlr_scene_subsurface_tree_create(&c->image_capture_scene->tree,
+											   client_surface(c));
 
 	/* Handle unmanaged clients first so we can return prior create borders
 	 */
