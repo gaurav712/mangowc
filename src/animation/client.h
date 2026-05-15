@@ -1,3 +1,4 @@
+#include "wlr/util/log.h"
 void client_actual_size(Client *c, int32_t *width, int32_t *height) {
 	*width = c->animation.current.width - 2 * (int32_t)c->bw;
 
@@ -245,6 +246,93 @@ void apply_shield(Client *c, struct wlr_box clip_box) {
 	}
 }
 
+void apply_split_border(Client *c, bool hit_no_border) {
+
+	if (c->iskilling || !c->mon || !client_surface(c)->mapped)
+		return;
+
+	const Layout *layout = c->mon->pertag->ltidxs[c->mon->pertag->curtag];
+
+	if (hit_no_border || layout->id != DWINDLE ||
+		!config.dwindle_manual_split) {
+		if (c->splitindicator[0]->node.enabled) {
+			wlr_scene_node_set_enabled(&c->splitindicator[0]->node, false);
+		}
+		if (c->splitindicator[1]->node.enabled) {
+			wlr_scene_node_set_enabled(&c->splitindicator[1]->node, false);
+		}
+		return;
+	} else {
+
+		DwindleNode **root =
+			&c->mon->pertag->dwindle_root[c->mon->pertag->curtag];
+		DwindleNode *dnode = dwindle_find_leaf(*root, c);
+
+		if (!dnode) {
+			wlr_scene_node_set_enabled(&c->splitindicator[0]->node, false);
+			wlr_scene_node_set_enabled(&c->splitindicator[1]->node, false);
+			return;
+		} else {
+			if (dnode->custom_leaf_split_h) {
+				wlr_scene_node_set_enabled(&c->splitindicator[0]->node, false);
+				wlr_scene_node_set_enabled(&c->splitindicator[1]->node, true);
+			} else {
+				wlr_scene_node_set_enabled(&c->splitindicator[0]->node, true);
+				wlr_scene_node_set_enabled(&c->splitindicator[1]->node, false);
+			}
+		}
+	}
+
+	struct wlr_box fullgeom = c->animation.current;
+	// 一但在GEZERO如果使用无符号，那么其他数据也会转换为无符号导致没有负数出错
+	int32_t bw = (int32_t)c->bw;
+
+	int32_t right_offset, bottom_offset, left_offset, top_offset;
+
+	if (c == grabc) {
+		right_offset = 0;
+		bottom_offset = 0;
+		left_offset = 0;
+		top_offset = 0;
+	} else {
+		right_offset =
+			GEZERO(c->animation.current.x + c->animation.current.width -
+				   c->mon->m.x - c->mon->m.width);
+		bottom_offset =
+			GEZERO(c->animation.current.y + c->animation.current.height -
+				   c->mon->m.y - c->mon->m.height);
+
+		left_offset = GEZERO(c->mon->m.x - c->animation.current.x);
+		top_offset = GEZERO(c->mon->m.y - c->animation.current.y);
+	}
+
+	int32_t border_down_width =
+		GEZERO(fullgeom.width - left_offset - right_offset);
+	int32_t border_down_height =
+		GEZERO(bw - bottom_offset - GEZERO(top_offset + bw - fullgeom.height));
+
+	int32_t border_right_width =
+		GEZERO(bw - right_offset - GEZERO(left_offset + bw - fullgeom.width));
+	int32_t border_right_height =
+		GEZERO(fullgeom.height - top_offset - bottom_offset);
+
+	int32_t border_down_x = GEZERO(left_offset);
+	int32_t border_down_y = GEZERO(fullgeom.height - bw) +
+							GEZERO(top_offset + bw - fullgeom.height);
+
+	int32_t border_right_x =
+		GEZERO(fullgeom.width - bw) + GEZERO(left_offset + bw - fullgeom.width);
+	int32_t border_right_y = GEZERO(top_offset);
+
+	set_rect_size(c->splitindicator[0], border_down_width, border_down_height);
+	set_rect_size(c->splitindicator[1], border_right_width,
+				  border_right_height);
+	wlr_scene_node_set_position(&c->splitindicator[0]->node, border_down_x,
+								border_down_y);
+	wlr_scene_node_set_position(&c->splitindicator[1]->node, border_right_x,
+								border_right_y);
+}
+
 void apply_border(Client *c) {
 	bool hit_no_border = false;
 
@@ -252,6 +340,8 @@ void apply_border(Client *c) {
 		return;
 
 	hit_no_border = check_hit_no_border(c);
+
+	apply_split_border(c, hit_no_border);
 
 	if (hit_no_border && config.smartgaps) {
 		c->bw = 0;
@@ -402,6 +492,163 @@ struct ivec2 clip_to_hide(Client *c, struct wlr_box *clip_box) {
 	}
 
 	return offset;
+}
+
+void client_set_drop_area(Client *c) {
+	bool first_draw = false;
+	int32_t drop_direction = UNDIR;
+
+	if (!c || !c->mon)
+		return;
+
+	if (!c->enable_drop_area_draw && !c->droparea->node.enabled) {
+		return;
+	}
+
+	if (!c->enable_drop_area_draw && c->droparea->node.enabled) {
+		wlr_scene_node_lower_to_bottom(&c->droparea->node);
+		wlr_scene_node_set_enabled(&c->droparea->node, false);
+		return;
+	} else if (c->enable_drop_area_draw && !c->droparea->node.enabled) {
+		wlr_scene_node_raise_to_top(&c->droparea->node);
+		wlr_scene_node_set_enabled(&c->droparea->node, true);
+		first_draw = true;
+	}
+
+	int32_t bw = (int32_t)c->bw;
+	int32_t client_width = c->geom.width - 2 * bw;
+	int32_t client_height = c->geom.height - 2 * bw;
+
+	// 光标在窗口客户区内的相对坐标
+	double rel_x = cursor->x - c->geom.x - bw;
+	double rel_y = cursor->y - c->geom.y - bw;
+
+	struct wlr_box drop_box;
+
+	const Layout *cur_layout = c->mon->pertag->ltidxs[c->mon->pertag->curtag];
+	bool dwindle_familiar =
+		cur_layout->id == DWINDLE && config.dwindle_drop_simple_split;
+
+	uint32_t nmaster = c->mon->pertag->nmasters[c->mon->pertag->curtag];
+
+	bool should_swap =
+		(cur_layout->id == DECK || cur_layout->id == VERTICAL_DECK ||
+		 cur_layout->id == MONOCLE || cur_layout->id == GRID ||
+		 cur_layout->id == VERTICAL_GRID) ||
+		((cur_layout->id == TILE || cur_layout->id == VERTICAL_TILE ||
+		  cur_layout->id == CENTER_TILE || cur_layout->id == RIGHT_TILE) &&
+		 nmaster == 1 && c->ismaster);
+
+	if (dwindle_familiar) {
+		bool split_h = c->geom.width >= c->geom.height;
+		float ratio = config.dwindle_split_ratio;
+		if (split_h) {
+			if (rel_x < client_width * 0.5) {
+				drop_direction = LEFT;
+				drop_box.x = bw;
+				drop_box.y = bw;
+				drop_box.width = (int32_t)(client_width * ratio);
+				drop_box.height = client_height;
+			} else {
+				drop_direction = RIGHT;
+				drop_box.x = bw + (int32_t)(client_width * ratio);
+				drop_box.y = bw;
+				drop_box.width = client_width - (int32_t)(client_width * ratio);
+				drop_box.height = client_height;
+			}
+		} else {
+			if (rel_y < client_height * 0.5) {
+				drop_direction = UP;
+				drop_box.x = bw;
+				drop_box.y = bw;
+				drop_box.width = client_width;
+				drop_box.height = (int32_t)(client_height * ratio);
+			} else {
+				drop_direction = DOWN;
+				drop_box.x = bw;
+				drop_box.y = bw + (int32_t)(client_height * ratio);
+				drop_box.width = client_width;
+				drop_box.height =
+					client_height - (int32_t)(client_height * ratio);
+			}
+		}
+	} else if (should_swap) {
+		drop_box.x = bw;
+		drop_box.y = bw;
+		drop_box.width = client_width;
+		drop_box.height = client_height;
+		drop_direction = UNDIR;
+	} else if (cur_layout->id == TILE || cur_layout->id == DECK ||
+			   cur_layout->id == CENTER_TILE || cur_layout->id == RIGHT_TILE) {
+		if (rel_y < client_height * 0.5) {
+			drop_direction = UP;
+			drop_box.x = bw;
+			drop_box.y = bw;
+			drop_box.width = client_width;
+			drop_box.height = client_height / 2;
+		} else {
+			drop_direction = DOWN;
+			drop_box.x = bw;
+			drop_box.y = bw + client_height / 2;
+			drop_box.width = client_width;
+			drop_box.height = client_height / 2;
+		}
+	} else if (cur_layout->id == VERTICAL_TILE ||
+			   cur_layout->id == VERTICAL_DECK) {
+		if (rel_x < client_width * 0.5) {
+			drop_direction = LEFT;
+			drop_box.x = bw;
+			drop_box.y = bw;
+			drop_box.width = client_width / 2;
+			drop_box.height = client_height;
+		} else {
+			drop_direction = RIGHT;
+			drop_box.x = bw + client_width / 2;
+			drop_box.y = bw;
+			drop_box.width = client_width / 2;
+			drop_box.height = client_height;
+		}
+	} else {
+		double dist_left = rel_x;
+		double dist_right = client_width - rel_x;
+		double dist_top = rel_y;
+		double dist_bottom = client_height - rel_y;
+
+		if (dist_left <= dist_right && dist_left <= dist_top &&
+			dist_left <= dist_bottom) {
+			drop_direction = LEFT;
+			drop_box.x = bw;
+			drop_box.y = bw;
+			drop_box.width = client_width / 2;
+			drop_box.height = client_height;
+		} else if (dist_right <= dist_top && dist_right <= dist_bottom) {
+			drop_direction = RIGHT;
+			drop_box.x = bw + client_width / 2;
+			drop_box.y = bw;
+			drop_box.width = client_width / 2;
+			drop_box.height = client_height;
+		} else if (dist_top <= dist_bottom) {
+			drop_direction = UP;
+			drop_box.x = bw;
+			drop_box.y = bw;
+			drop_box.width = client_width;
+			drop_box.height = client_height / 2;
+		} else {
+			drop_direction = DOWN;
+			drop_box.x = bw;
+			drop_box.y = bw + client_height / 2;
+			drop_box.width = client_width;
+			drop_box.height = client_height / 2;
+		}
+	}
+
+	if (!first_draw && c->drop_direction == drop_direction) {
+		return;
+	}
+	c->drop_direction = drop_direction;
+
+	wlr_scene_node_set_position(&c->droparea->node, drop_box.x, drop_box.y);
+	wlr_scene_rect_set_size(c->droparea, drop_box.width, drop_box.height);
 }
 
 void client_apply_clip(Client *c, float factor) {
@@ -942,6 +1189,9 @@ bool client_draw_fadeout_frame(Client *c) {
 
 void client_set_focused_opacity_animation(Client *c) {
 	float *border_color = get_border_color(c);
+	for (int32_t i = 0; i < 4; i++) {
+		wlr_scene_node_lower_to_bottom(&c->border[i]->node);
+	}
 
 	if (!config.animations) {
 		setborder_color(c);
@@ -963,6 +1213,10 @@ void client_set_focused_opacity_animation(Client *c) {
 
 void client_set_unfocused_opacity_animation(Client *c) {
 	float *border_color = get_border_color(c);
+
+	for (int32_t i = 0; i < 4; i++) {
+		wlr_scene_node_raise_to_top(&c->border[i]->node);
+	}
 
 	if (!config.animations) {
 		setborder_color(c);
